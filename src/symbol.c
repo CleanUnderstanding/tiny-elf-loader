@@ -453,6 +453,98 @@ void ELF64_relocate(ELF64relocation_table *table, runtime *r)
 
                }
 
+               case R_X86_64_JUMP_SLOT:
+               {
+
+                if (!r->symtab)
+                {
+                   fprintf(stderr, "symtab is NULL \n");
+                   exit(EXIT_FAILURE);
+                }
+
+                uint32_t sym_index = ELF64_R_SYM(relocs[j].r_info);
+                Elf64_Sym *sym = &r -> symtab[sym_index];
+
+                if (sym->st_name == 0)
+                {
+                    fprintf(stderr, "st name is not found");
+                    exit(EXIT_FAILURE);
+                }
+
+                const char *symbol_name = r -> dynstr + sym->st_name;
+                void *resolved = dlsym(RTLD_DEFAULT, symbol_name);
+
+                if(!resolved)
+                {
+                  if (strcmp(symbol_name, "_ITM_deregisterTMCloneTable") == 0 ||  strcmp(symbol_name, "_ITM_registerTMCloneTable") == 0 || strcmp(symbol_name, "__gmon_start__") == 0 ||   strcmp(symbol_name, "__libc_start_main") )
+                  {
+                     break;
+                  }
+
+                  fprintf(stderr, "Failed to resolve");
+                  exit(EXIT_FAILURE);
+
+                }
+
+                *patch_addr = (Elf64_Addr)resolved;
+
+               }
+
+
+               case R_X86_64_64:
+               {
+
+                uint32_t sym_index = ELF64_R_SYM(relocs[j].r_info);
+                Elf64_Sym *sym = &r->symtab[sym_index];
+
+                if (sym->st_name == 0)
+                {
+                    fprintf(stderr, "st name is not found");
+                    exit(EXIT_FAILURE);
+                }
+
+                const char *symbol_name = r->dynstr + sym->st_name;
+                Elf64_Addr resolved = (Elf64_Addr) IO_lookup_path(r, (char *)symbol_name);
+
+                if (!resolved)
+                {
+                    fprintf(stderr, "Failed to resolve");
+                    exit(EXIT_FAILURE);
+                }
+
+                *patch_addr = resolved + addend;
+
+                }
+               case R_X86_64_COPY:
+               {
+
+                   const char *symbol_name = (char *) r -> dynstr + sym -> st_name;
+                   void *resolved = NULL;
+
+                   for (int i = 0; i < r -> ssz_lib; i++)
+                   {
+                       resolved = dlsym(r -> lib_name[i], symbol_name);
+                       if (resolved)   break;
+
+
+                   }
+
+                   if (!resolved)
+                   {
+                      if ((strcmp(symbol_name, "__libc_start_main") == 0 || strcmp(symbol_name, "__cxa_finalize") == 0))
+                      {
+                         break;
+                      }
+
+                       fprintf(stderr, "Failed to resolve R_X86_64_COPY with symbol %s\n", symbol_name);
+                       exit(EXIT_FAILURE);
+
+                   }
+
+                   memcpy((void *)patch_addr, resolved, sym->st_size);
+                   break;
+               }
+
                 break;
 
                }
